@@ -90,7 +90,7 @@ def is_y_pose(pose_landmarks):
     return (left_hand.y < left_shoulder.y and right_hand.y < right_shoulder.y and
             left_hand.x < left_shoulder.x and right_hand.x > right_shoulder.x)
 
-def start_cam():
+def start_cam(mp_hands, hands, mp_pose, pose, mp_drawing, is_thumb_up, is_peace_sign, is_rock_sign, is_arms_crossed, cap):
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -146,11 +146,11 @@ recorder.listen_in_background(source, record_callback, phrase_time_limit=record_
 
 # Cue the user that we're ready to go.
 print("Model loaded.\n")
-cam_thread = Thread(target=start_cam)
-cam_thread.start()
+audio_thread = Thread(target=start_cam)
+audio_thread.start()
 while True:
     try:
-        now = datetime.now()
+        now = datetime.utcnow()
         # Pull raw recorded audio from the queue.
         if not data_queue.empty():
             phrase_complete = False
