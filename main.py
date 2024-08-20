@@ -12,16 +12,17 @@ from queue import Queue
 from time import sleep
 import cv2
 import mediapipe as mp
+from utils.string_utils import remove_special_chars_and_accents
 
 
-# The last time a recording was retrieved from the queue.
+special_word = 'transição'
+special_gesture = 'peace' ## peace, thumb_up, rock
+font_scale = 0.8
+
 phrase_time = None
-# Thread safe Queue for passing data from the threaded recording callback.
 data_queue = Queue()
-# We use SpeechRecognizer to record our audio because it has a nice feature where it can detect when speech ends.
 recorder = sr.Recognizer()
 recorder.energy_threshold = 1000
-# Definitely do this, dynamic energy compensation lowers the energy threshold dramatically to a point where the SpeechRecognizer never stops recording.
 recorder.dynamic_energy_threshold = False
 source = sr.Microphone(sample_rate=16000)
 
@@ -31,8 +32,9 @@ audio_model = whisper.load_model(model)
 
 record_timeout = 2
 phrase_timeout = 3
-
 transcription = ['']
+special_word_found_description = None
+special_gesture_found_description = None
 
 with source:
     recorder.adjust_for_ambient_noise(source)
@@ -66,31 +68,58 @@ def is_rock_sign(hand_landmarks):
             hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y > hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_DIP].y and
             hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP].y > hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_DIP].y)
 
-def is_arms_crossed(pose_landmarks):
-    # Pontos de referência para os braços e ombros
-    left_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER]
-    right_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-    left_wrist = pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_WRIST]
-    right_wrist = pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_WRIST]
+def start_microphone(phrase_time, data_queue, audio_model, phrase_timeout, transcription, special_word):
+    global special_word_found_description
+    while True:
+        try:
+            now = datetime.now()
+        # Pull raw recorded audio from the queue.
+            if not data_queue.empty():
+                phrase_complete = False
+            # If enough time has passed between recordings, consider the phrase complete.
+            # Clear the current working audio buffer to start over with the new data.
+                if phrase_time and now - phrase_time > timedelta(seconds=phrase_timeout):
+                    phrase_complete = True
+            # This is the last time we received new audio data from the queue.
+                phrase_time = now
+            
+            # Combine audio data from queue
+                audio_data = b''.join(data_queue.queue)
+                data_queue.queue.clear()
+            
+            # Convert in-ram buffer to something the model can use directly without needing a temp file.
+            # Convert data from 16 bit wide integers to floating point with a width of 32 bits.
+            # Clamp the audio stream frequency to a PCM wavelength compatible default of 32768hz max.
+                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
-    # Verifica se a mão esquerda está próxima ao ombro direito
-    # e se a mão direita está próxima ao ombro esquerdo
-    threshold = 0.2  # Ajuste conforme necessário
+            # Read the transcription.
+                result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
+                text = result['text'].strip()
 
-    left_hand_near_right_shoulder = abs(left_wrist.x - right_shoulder.x) < threshold and abs(left_wrist.y - right_shoulder.y) < threshold
-    right_hand_near_left_shoulder = abs(right_wrist.x - left_shoulder.x) < threshold and abs(right_wrist.y - left_shoulder.y) < threshold
+            # If we detected a pause between recordings, add a new item to our transcription.
+            # Otherwise edit the existing one.
+                if phrase_complete:
+                    transcription.append(text)
+                else:
+                    transcription[-1] = text
 
-    return left_hand_near_right_shoulder and right_hand_near_left_shoulder
+            # Clear the console to reprint the updated transcription.
+                os.system('cls' if os.name=='nt' else 'clear')
+                for line in transcription:
+                    print(line)
+                    if remove_special_chars_and_accents(special_word) in remove_special_chars_and_accents(line):
+                        transcription = []
+                        special_word_found_description = f"Corte detectado pela palavra {remove_special_chars_and_accents(special_word)}"
+                        break
+            else:
+            # Infinite loops are bad for processors, must sleep.
+                sleep(0.25)
+        except KeyboardInterrupt:
+            break
 
-def is_y_pose(pose_landmarks):
-    left_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER]
-    right_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-    left_hand = pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_WRIST]
-    right_hand = pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_WRIST]
-    return (left_hand.y < left_shoulder.y and right_hand.y < right_shoulder.y and
-            left_hand.x < left_shoulder.x and right_hand.x > right_shoulder.x)
 
 def start_cam():
+    global special_gesture_found_description
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -98,33 +127,24 @@ def start_cam():
 
     # Convert the image to RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
+        cv2.putText(frame, special_word_found_description, (100, 50), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, special_gesture_found_description, (100, 200), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), 2, cv2.LINE_AA)
     # Process hand landmarks
         hand_results = hands.process(rgb_frame)
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
-                if is_peace_sign(hand_landmarks):
-                    print("Peace Sign Gesture")
-                elif is_thumb_up(hand_landmarks):
-                    print("Thumb Up Gesture")
-                elif is_rock_sign(hand_landmarks):
-                    print("Rock Sign Gesture")
+                if is_peace_sign(hand_landmarks) and special_gesture == 'peace':
+                    special_gesture_found_description = 'Corte detectado pelo gesto de paz'
+                elif is_thumb_up(hand_landmarks) and special_gesture == 'thumb_up':
+                    special_gesture_found_description = 'Corte detectado pelo gesto de joinha'
+                elif is_rock_sign(hand_landmarks) and special_gesture == 'rock':
+                    special_gesture_found_description = 'Corte detectado pelo gesto de rock'
 
-                prev_hand_landmarks = hand_landmarks
-
-    # Process pose landmarks
-        pose_results = pose.process(rgb_frame)
-        if pose_results.pose_landmarks:
-            pose_landmarks = pose_results.pose_landmarks
-            if is_arms_crossed(pose_landmarks):
-                print("Arms crossed")
 
     # Draw landmarks on the image
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-        if pose_results.pose_landmarks:
-            mp_drawing.draw_landmarks(frame, pose_results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
         cv2.imshow('Recognition live', frame)
 
@@ -148,51 +168,5 @@ recorder.listen_in_background(source, record_callback, phrase_time_limit=record_
 print("Model loaded.\n")
 cam_thread = Thread(target=start_cam)
 cam_thread.start()
-while True:
-    try:
-        now = datetime.now()
-        # Pull raw recorded audio from the queue.
-        if not data_queue.empty():
-            phrase_complete = False
-            # If enough time has passed between recordings, consider the phrase complete.
-            # Clear the current working audio buffer to start over with the new data.
-            if phrase_time and now - phrase_time > timedelta(seconds=phrase_timeout):
-                phrase_complete = True
-            # This is the last time we received new audio data from the queue.
-            phrase_time = now
-            
-            # Combine audio data from queue
-            audio_data = b''.join(data_queue.queue)
-            data_queue.queue.clear()
-            
-            # Convert in-ram buffer to something the model can use directly without needing a temp file.
-            # Convert data from 16 bit wide integers to floating point with a width of 32 bits.
-            # Clamp the audio stream frequency to a PCM wavelength compatible default of 32768hz max.
-            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
-            # Read the transcription.
-            result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
-            text = result['text'].strip()
-
-            # If we detected a pause between recordings, add a new item to our transcription.
-            # Otherwise edit the existing one.
-            if phrase_complete:
-                transcription.append(text)
-            else:
-                transcription[-1] = text
-
-            # Clear the console to reprint the updated transcription.
-            os.system('cls' if os.name=='nt' else 'clear')
-            for line in transcription:
-                print(line)
-            # Flush stdout.
-            print('', end='', flush=True)
-        else:
-            # Infinite loops are bad for processors, must sleep.
-            sleep(0.25)
-    except KeyboardInterrupt:
-        break
-
-print("\n\nTranscription:")
-for line in transcription:
-    print(line)
+start_microphone(phrase_time, data_queue, audio_model, phrase_timeout, transcription, special_word)
