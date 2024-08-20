@@ -23,8 +23,10 @@ FONT_THICKNESS = 2
 phrase_time = None
 data_queue = Queue()
 transcription = ['']
+start_time = datetime.now()
 special_word_found_description = None
 special_gesture_found_description = None
+special_color_found_description = None
 mp_hands = mp.solutions.hands
 
 def init_speech_recognition():
@@ -112,7 +114,7 @@ def start_microphone(audio_model):
             break
 
 def start_cam(hands, mp_drawing):
-    global special_gesture_found_description
+    global special_gesture_found_description, special_color_found_description
     cap = cv2.VideoCapture(0)
 
     while cap.isOpened():
@@ -122,10 +124,26 @@ def start_cam(hands, mp_drawing):
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if special_word_found_description:
-            draw_text_with_background(frame, special_word_found_description or '', (100, 50), FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, BACKGROUND_COLOR)
+            draw_text_with_background(frame, special_word_found_description or '', (100, 100), FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, BACKGROUND_COLOR)
         if special_gesture_found_description:
-            draw_text_with_background(frame, special_gesture_found_description or '', (100, 200), FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, BACKGROUND_COLOR)
+            draw_text_with_background(frame, special_gesture_found_description or '', (100, 250), FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, BACKGROUND_COLOR)
+        if special_color_found_description:
+            draw_text_with_background(frame, special_color_found_description or '', (100, 400), FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, BACKGROUND_COLOR)
 
+
+        frame_position = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+        ## TODO MELHORAR E SEPARAR POR MÉTODOS Color recg
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        threshold=10
+        frame_interval = int(fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_position + frame_interval)
+
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        time_difference = datetime.now() - start_time
+        if cv2.mean(gray_frame)[0] < threshold and time_difference >= timedelta(seconds=10):
+            special_color_found_description = "Achei foc"
+
+        ## End
         hand_results = hands.process(rgb_frame)
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
@@ -147,15 +165,12 @@ def start_cam(hands, mp_drawing):
     cv2.destroyAllWindows()
 
 def main():
-    global phrase_time, transcription, special_word_found_description, special_gesture_found_description
+    global phrase_time, transcription, special_word_found_description, special_gesture_found_description, special_color_found_description
 
     recorder, source = init_speech_recognition()
     audio_model = load_audio_model()
     hands, mp_drawing = init_mediapipe()
-
     recorder.listen_in_background(source, record_callback, phrase_time_limit=RECORD_TIMEOUT)
-
-    print("Model loaded.\n")
 
     cam_thread = Thread(target=start_cam, args=(hands, mp_drawing))
     cam_thread.start()
