@@ -1,13 +1,15 @@
 ### Introduction
 
-This Python project utilizes artificial intelligence to perform intelligent video cuts based on detected keywords in audio. When a specific word, such as "cut" (configurable as a parameter), is identified, the program automatically segments the video, which can be repeated throughout the entire video. The goal is to simplify the editing of lengthy videos using these tools.
+This Python program is a real-time version of this [Project](https://github.com/kelvi-ribeiro/auto-cut-ai), live demonstration of AI-powered video recognition capabilities. It integrates speech, gesture, and screen blink recognition to detect and display specific actions or keywords as they occur. Designed for practical and immediate feedback, the program captures live audio and video, processes it on the fly, and highlights detected cues such as special words, gestures, and screen blinks. This tool is ideal for showcasing the dynamic functionality of AI-driven video editing and recognition in an interactive and engaging way.
 
 ## Dependencies
 
-- ![MoviePy](https://img.shields.io/badge/MoviePy-v1.0.3-blue)
-- ![Pedalboard](https://img.shields.io/badge/Pedalboard-v0.9.3-orange)
-- ![Fast_Whisper](https://img.shields.io/badge/Fast_Whisper-v1.0.0-green)
-- ![PyQt5](https://img.shields.io/badge/PyQt5-v5.15.11-red)
+- ![NumPy](https://img.shields.io/badge/NumPy-v1.24.3-blue)
+- ![OpenCV](https://img.shields.io/badge/OpenCV-v4.7.0.72-red)
+- ![MediaPipe](https://img.shields.io/badge/MediaPipe-v0.9.2.1-green)
+- ![Whisper](https://img.shields.io/badge/Whisper-v1.0.0-purple)
+- ![PyTorch](https://img.shields.io/badge/PyTorch-v2.0.0-black)
+- ![SpeechRecognition](https://img.shields.io/badge/SpeechRecognition-v3.10.0-yellow)
 
 ## Running on Windows
 
@@ -31,11 +33,3 @@ This Python project utilizes artificial intelligence to perform intelligent vide
    ```
    python main.py
    ```
-
-### Backlog:
-
-- Implement video cutting by gesture.
-- Implement automatic cutting after detecting keywords; use default time if not detected.
-- Estimate processing time.
-- Test from scratch on Windows.
-- Implement partial processing to resume from interruption points in videos.
