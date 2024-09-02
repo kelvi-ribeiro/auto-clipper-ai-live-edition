@@ -12,7 +12,7 @@ import mediapipe as mp
 from utils.string_utils import remove_special_chars_and_accents
 
 SPECIAL_WORD = 'transição'
-SPECIAL_GESTURE = 'rock' 
+SPECIAL_GESTURE = 'peace' 
 FONT_SCALE = 0.8
 RECORD_TIMEOUT = 2
 PHRASE_TIMEOUT = 3
@@ -100,8 +100,6 @@ def start_microphone(audio_model):
 
                 if phrase_complete:
                     transcription.append(text)
-                else:
-                    transcription[-1] = text
 
                 for line in transcription:
                     if remove_special_chars_and_accents(SPECIAL_WORD) in remove_special_chars_and_accents(line):
@@ -132,18 +130,16 @@ def start_cam(hands, mp_drawing):
 
 
         frame_position = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-        ## TODO MELHORAR E SEPARAR POR MÉTODOS Color recg
         fps = cap.get(cv2.CAP_PROP_FPS)
-        threshold=10
+        threshold=40
         frame_interval = int(fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_position + frame_interval)
 
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         time_difference = datetime.now() - start_time
-        if cv2.mean(gray_frame)[0] < threshold and time_difference >= timedelta(seconds=10):
-            special_color_found_description = "Achei foc"
+        if cv2.mean(gray_frame)[0] < threshold and time_difference >= timedelta(seconds=15):
+            special_color_found_description = "Piscada na tela detectada"
 
-        ## End
         hand_results = hands.process(rgb_frame)
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
